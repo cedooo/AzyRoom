@@ -1,0 +1,1874 @@
+package itims.web.room;
+
+import itims.core.model.CoreModelUtil;
+import itims.core.model.constant.MOConst;
+import itims.core.model.mgr.CoreModelManager;
+import itims.core.repeater.KpiValue;
+import itims.core.repeater.MOWrap;
+import itims.core.rpc.impl.EntityManager;
+import itims.core.rpc.impl.ViewDataGetter;
+import itims.model.ent.model.Cmo;
+import itims.model.utils.ModelCommonParams;
+import itims.share.corebuf.CoreBufService;
+import itims.share.corebuf.ICoreBufService;
+import itims.share.corebuf.model.IMONode;
+import itims.share.corebuf.model.IMOType;
+import itims.share.corebuf.model.ITreeNode;
+import itims.share.corebuf.model.MONode;
+import itims.share.db.ConnException;
+import itims.share.db.DBException;
+import itims.share.db.JdbcAbstractTemplate;
+import itims.share.right.bean.Domain;
+import itims.share.right.bean.User;
+import itims.share.util.MockTestMode;
+import itims.share.web.img.IconFile;
+import itims.share.web.img.IconManager;
+import itims.system.SystemParam;
+import itims.web.customTree.CustomTreeManage;
+import itims.web.customTree.MoDefineTreeNode;
+import itims.web.kpirefresh.KpiService;
+import itims.web.share.common.AuthService;
+import itims.web.share.common.FileUtil;
+import itims.web.share.common.Utilities;
+import itims.web.share.logger.ViewLogger;
+import itims.web.share.service.MOService;
+import itims.web.share.service.TreeService;
+
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.lang.reflect.Method;
+import java.lang.reflect.TypeVariable;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.Timer;
+
+import javax.servlet.http.HttpSession;
+
+import net.sf.json.JSONArray;
+import net.sf.json.JSONObject;
+
+import org.apache.commons.lang.StringUtils;
+import org.dom4j.Document;
+
+/**
+ * Flex前端请求服务
+ * 
+ * @author mjz
+ * 
+ */
+public class FlexRoomService {
+
+	private static final ViewLogger logger = ViewLogger.getInstance();
+	private static final String loginUserIDName = "loginUserID";
+	private static FlexRoomService instance = null;
+	private String roomType = "RM";
+	private static final String PersonalConfigPrefix = "Config";
+	private static final String DefaultPrefix = "DefaultView";
+	public static final Hashtable<String, Hashtable<String, Boolean>> kpiHashtable = new Hashtable<String, Hashtable<String, Boolean>>();
+
+	public static FlexRoomService getInstance() {
+		if (instance == null) {
+			instance = new FlexRoomService();
+		}
+		return instance;
+	}
+
+	/**
+	 * 根据用户信息获取视图列表，用于显示视图树，以及保存，删除视图列表
+	 * 
+	 * @param auth
+	 *            权限
+	 * @param session
+	 * @return JSONArray
+	 * @throws Exception
+	 */
+	public JSONArray getViewListByUser(String auth, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		return ViewManager.getInstance().getViewListByUser(auth, roomType,
+				dmsn + "", session);
+	}
+
+	public JSONArray getViewTreeData(String auth, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		return ViewManager.getInstance().getViewTreeData(auth, roomType,
+				dmsn + "", session);
+	}
+
+	/**
+	 * 根据用户信息获取视图列表，用于显示视图树，以及保存，删除视图列表
+	 * 
+	 * @param auth
+	 *            权限
+	 * @param session
+	 * @return JSONArray
+	 * @throws Exception
+	 */
+	public JSONObject getViewTreeListByUser(String auth, HttpSession session)
+			throws Exception {
+		String userId = ((User) session.getAttribute(loginUserIDName))
+				.getUserID();
+		int dmsn = Utilities.getDmsn();
+		String miniPath = "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/room/miniview/";
+		JSONObject viewlistArg = ViewManager.getInstance()
+				.getViewTreeListByUser(auth, roomType, dmsn + "", miniPath,
+						session);
+
+		JSONObject defaultArg = getDefaultViewInfo(userId);
+		JSONObject arg = new JSONObject();
+		arg.element("viewList", viewlistArg);
+		arg.element("defaultView", defaultArg);
+		if (ViewManager.getInstance()
+				.getAllTypeViewListByUser(userId, roomType, dmsn + "").size() == 0) {
+			arg.element("hasView", false);
+		} else {
+			arg.element("hasView", true);
+		}
+		return arg;
+	}
+
+	/**
+	 * 创建保存视图，用于Flex前端新建视图或另存为视图的保存功能 为确保id的唯一性，视图id将会全部由后台生成
+	 * 
+	 * @return viewId 返回新建视图ID
+	 */
+	public String createView(String group, String name, String type,
+			String viewXml, String viewAuth, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		String filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/backplaneImage/temp/";
+		File tempFile = new File(filePath);
+		FileUtil.delRelFile(tempFile);
+		String userId = ((User) session.getAttribute(loginUserIDName))
+				.getUserID();
+		logger.info("----[FlexService][createView] 保存视图（新建）, viewName:" + name
+				+ ",viewGroup:" + group + ",auth:" + viewAuth + "，userId:"
+				+ userId + ",dmsn:" + dmsn);
+		String newViewId = ViewManager.getInstance().createView(group, name,
+				roomType, viewXml, viewAuth, userId, dmsn);
+		startChangeRackImagePathTask(newViewId, dmsn + "", 500);
+		logger.info("----[FlexService][createView] 保存视图（新建）成功, ViewId:"
+				+ newViewId);
+		return newViewId;
+	}
+
+	private void startChangeRackImagePathTask(String viewId, String dmsn, long m) {
+		ChangeRackImagePathTask changeRackImagePathTask = new ChangeRackImagePathTask(
+				viewId, dmsn);
+		Timer timer = new Timer();
+		timer.schedule(changeRackImagePathTask, m);
+	}
+
+	static class ChangeRackImagePathTask extends java.util.TimerTask {
+		String viewId;
+		String dmsn;
+
+		public void run() {
+			try {
+				String oldPath = "/view_uploadImage/room/backplaneImage/room";
+				String newPath = "/view_uploadImage/room/backplaneImage/"
+						+ this.viewId;
+				File file=new File(oldPath);
+				File file2=new File(newPath);
+				FileUtil.copyFile(file2, file);
+				FileUtil.delRelFile(file);
+				//FileUtil.reNameFile(oldPath, newPath, dmsn);
+			} catch (Exception e) {
+				// TODO: handle exception
+			}
+		}
+
+		public ChangeRackImagePathTask(String viewId, String dmsn) {
+			this.viewId = viewId;
+			this.dmsn = dmsn;
+		}
+	}
+
+	/**
+	 * 原有视图保存
+	 * 
+	 * @param viewId
+	 * @param viewXml
+	 * @param session
+	 * @throws Exception
+	 */
+	public boolean saveView(String viewId, String viewXml, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		String filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/backplaneImage/temp/";
+		File tempFile = new File(filePath);
+		FileUtil.delRelFile(tempFile);
+		logger.info("------[FlexService][saveView] Invoke save view function.");
+
+		Boolean res = ViewManager.getInstance().saveViewXML(viewId, roomType,
+				viewXml, dmsn + "", session);
+		if (res) {
+			FlexRoomService.kpiHashtable.remove(viewId);
+		}
+		return res;
+	}
+
+	public void writeToFile(String path, String fileName, byte[] bytes) {
+		path = "e:/miniview/" + fileName + ".png";
+		try {
+			File f = new File(path);
+			f.delete();
+			f.getParentFile().mkdirs();
+			f.createNewFile();
+			FileOutputStream fos = new FileOutputStream(f);
+			DataOutputStream dos = new DataOutputStream(fos);
+			dos.write(bytes);
+			dos.close();
+			fos.close();
+		} catch (Exception e) {
+			logger.error("[writeToFile]", e);
+		}
+	}
+
+	/**
+	 * 删除视图
+	 * 
+	 * @param viewIds
+	 * @param session
+	 * @throws Exception
+	 */
+	public void deleteView(ArrayList<String> viewIds, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		ViewManager.getInstance().deleteView(viewIds, roomType, dmsn + "",
+				session);
+		for (String viewId : viewIds) {
+			delViewRelateImage(viewId, dmsn);
+		}
+	}
+
+	/**
+	 * 根据视图ID获取用户权限下的视图
+	 * 
+	 * @param viewId
+	 *            视图ID
+	 * @param auth
+	 *            用户权限
+	 * @param session
+	 * @return
+	 * @throws Exception
+	 */
+	public Document getViewXML(String viewId, String auth, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		String filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/backplaneImage/temp/";
+		File tempFile = new File(filePath);
+		FileUtil.delRelFile(tempFile);
+		return ViewManager.getInstance().getViewXML(viewId, roomType, auth,
+				dmsn + "", session);
+	}
+
+	/**
+	 * 将当前视图设为默认视图，默认视图唯一
+	 * 
+	 * @param viewID
+	 */
+	public boolean setDefaultView(String viewId) {
+		int dmsn = Utilities.getDmsn();
+		return ViewManager.getInstance().saveDefaultView(
+				roomType + DefaultPrefix, viewId, dmsn + "");
+	}
+
+	/**
+	 * 视图第一次加载的时候，打开默认视图 分三种情况： 1.默认视图设置且存在，则打开该视图； 2.默认视图设置但该视图可能被删除，则打开其他视图；
+	 * 3.默认视图设置且被删除，而其他视图也不存在，则打开新建视图页面，后台返回给前台的是<noview />；
+	 * 
+	 * @param auth
+	 *            视图权限
+	 */
+	public Document getDefaultView(String auth, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		return ViewManager.getInstance().getDefaultView(auth,
+				roomType + DefaultPrefix, roomType, dmsn + "", session);
+	}
+
+	public JSONObject getDefaultViewInfo(String userId) throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONObject arg = new JSONObject();
+		String id = ViewDAO.getXMLConfig(roomType + "DefaultView", "", dmsn
+				+ "");
+		if (ViewManager.getInstance().hasView(id, dmsn + "")
+				&& AuthService.getInstance().isAuth(userId, id, "view")) {
+			View view = ViewManager.getInstance().getView(id, dmsn + "");
+			String viewGroupId = ViewDAO.getGroupIdBySql(dmsn + "",
+					view.getGroup(), roomType);
+			if (viewGroupId != null && !viewGroupId.equalsIgnoreCase("")) {
+				arg.element("id", view.getId());
+				arg.element("group", viewGroupId);
+			}
+		}
+		return arg;
+	}
+
+	public String getDefaultViewId() throws Exception {
+		int dmsn = Utilities.getDmsn();
+		String id;
+		id = ViewDAO.getXMLConfig(roomType + "DefaultView", "", dmsn + "");
+		if (ViewManager.getInstance().hasView(id, dmsn + "")) {
+			return id;
+		} else {
+			return null;
+		}
+	}
+
+	public Boolean renameView(String viewId, String newName) {
+		int dmsn = Utilities.getDmsn();
+		View view;
+		try {
+			view = ViewManager.getInstance().getView(viewId, roomType,
+					dmsn + "");
+		} catch (Exception e) {
+			return false;
+		}
+		if (view != null) {
+			view.setName(newName);
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	/**
+	 * 创建视图分组
+	 * 
+	 * @param name
+	 * @return
+	 * @throws Exception
+	 */
+	public boolean createViewGroup(String name) throws Exception {
+		int dmsn = Utilities.getDmsn();
+		boolean isSuc = false;
+		String viewGroupID = ViewDAO.insertViewGroup(name, roomType); // 入库时获取当前域
+		if (viewGroupID != null) {
+			ViewManager.getInstance().addViewGroupMap(dmsn + "", roomType,
+					viewGroupID, name);
+			isSuc = true;
+		}
+		return isSuc;
+	}
+
+	/**
+	 * 重命名视图分组
+	 * 
+	 * @param id
+	 *            视图分组ID
+	 * @param name
+	 *            新名称
+	 * @return
+	 * @throws Exception
+	 */
+	public boolean renameViewGroup(String groupId, String groupName)
+			throws Exception {
+		boolean isSuc = false;
+		int dmsn = Utilities.getDmsn();
+		if (ViewDAO.updateViewGroup(groupId, groupName)) {
+			Collection<View> views = ViewManager.getInstance().getViews(
+					dmsn + "");
+			for (View view : views) {
+				if (view != null && view.getGroup() != null
+						&& view.getDmsn() == dmsn) {
+					String newGroupID = ViewManager.getInstance()
+							.getViewGroupIDByName(dmsn + "", roomType,
+									view.getGroup());
+					if (groupId.equalsIgnoreCase(newGroupID)) {
+						view.setGroup(groupName);
+					}
+				}
+			}
+			ViewManager.getInstance().uptViewGroupMap(dmsn + "", roomType,
+					groupId, groupName);
+			isSuc = true;
+		}
+		return isSuc;
+	}
+
+	/**
+	 * 删除视图分组
+	 * 
+	 * @param id
+	 * @param name
+	 * @param delViews
+	 *            是否删除该视图分组下的视图
+	 * @return
+	 * @throws Exception
+	 */
+	public boolean removeViewGroup(String id, boolean isDelView,
+			HttpSession session) throws Exception {
+		int dmsn = Utilities.getDmsn();
+		String groupName = ViewManager.getInstance().getViewGroupNameByID(
+				dmsn + "", roomType, id)
+				+ "";
+		if (isDelView) {
+			Collection<View> allViews = ViewManager.getInstance().getViews(
+					dmsn + "");
+			for (View view : allViews) {
+				if (groupName.equalsIgnoreCase(view.getGroup())) {
+					try {
+						delViewRelateImage(view.getId(), dmsn);
+					} catch (Exception e) {
+					}
+				}
+			}
+		}
+		return ViewManager.getInstance().removeViewGroup(id, roomType,
+				dmsn + "", isDelView, session);
+	}
+
+	public ArrayList<JSONObject> getViewListByEquipmentId(String mosn)
+			throws Exception {
+		ArrayList<JSONObject> viewList = ViewManager.getInstance()
+				.getViewListsByEquipmentId(mosn);
+		return viewList;
+	}
+
+	public void setFusize(String mosn, String usize) {
+		MONode mo = MOService.getInstance().getMO(mosn);
+		if (mo != null) {
+			mo.getTMO().setFusize(Integer.parseInt(usize));
+		}
+	}
+
+	/**
+	 * 获取机架树列表，用于展示机架树
+	 * 
+	 * @return
+	 */
+	public JSONObject getMOTreeList(Integer treeID) {
+		JSONObject res = new JSONObject();
+		try {
+			res = TreeService.getInstance(null, treeID).getRackableTree();
+		} catch (Exception e) {
+			logger.info("----FlexRoomService---getMOTreeList获取树数据出错");
+		}
+		return res;
+	}
+
+	public JSONObject getMOTreeList() {
+		JSONObject res = new JSONObject();
+		try {
+			res = TreeService.getInstance().getRackableTree();
+		} catch (Exception e) {
+			logger.info("----FlexRoomService---getMOTreeList获取树数据出错");
+		}
+		return res;
+	}
+
+	/**
+	 * 
+	 * 获取自定义树列表
+	 * 
+	 * @param session
+	 * @return
+	 */
+	public JSONArray getTreeList(HttpSession session) {
+		int dmsn = Utilities.getDmsn();
+		String userID = ((User) session.getAttribute(loginUserIDName))
+				.getUserID();
+		List<MoDefineTreeNode> list = CustomTreeManage.getInstance(dmsn)
+				.getCunstomTreeList(userID);
+		JSONArray res = new JSONArray();
+		JSONObject defaultTree = new JSONObject();
+		defaultTree.element("mosn", "-1");
+		defaultTree.element("dmsn", dmsn + "");
+		defaultTree.element("disporder", "");
+		defaultTree.element("icon", "");
+		defaultTree.element("pmosn", "");
+		defaultTree.element("rmosn", "");
+		defaultTree.element("title", "默认树");
+		defaultTree.element("type", "");
+		res.add(defaultTree);
+
+		JSONObject primitiveTree = new JSONObject();
+		primitiveTree.element("mosn", "0");
+		primitiveTree.element("dmsn", dmsn + "");
+		primitiveTree.element("disporder", "");
+		primitiveTree.element("icon", "");
+		primitiveTree.element("pmosn", "");
+		primitiveTree.element("rmosn", "");
+		primitiveTree.element("title", "原始树");
+		primitiveTree.element("type", "");
+		res.add(primitiveTree);
+
+		JSONObject accsetTree = new JSONObject();
+		accsetTree.element("mosn", "-2");
+		accsetTree.element("dmsn", dmsn + "");
+		accsetTree.element("disporder", "");
+		accsetTree.element("icon", "");
+		accsetTree.element("pmosn", "");
+		accsetTree.element("rmosn", "");
+		accsetTree.element("title", "资产树");
+		accsetTree.element("type", "");
+		res.add(accsetTree);
+
+		for (MoDefineTreeNode treeNode : list) {
+			JSONObject arg = new JSONObject();
+			arg.element("dmsn", treeNode.getDmsn() + "");
+			arg.element("mosn", treeNode.getMosn() + "");
+			arg.element("disporder", treeNode.getFDisporder() + "");
+			arg.element("icon", treeNode.getFIcon() + "");
+			arg.element("pmosn", treeNode.getFPmosn() + "");
+			arg.element("rmosn", treeNode.getFRmosn() + "");
+			arg.element("title", treeNode.getFTitle() + "");
+			arg.element("type", treeNode.getFType() + "");
+			res.add(arg);
+		}
+		return res;
+	}
+
+	/**
+	 * 获取设备树列表，用于展示设备树
+	 * 
+	 * @return
+	 */
+	public void getMOTreeListTest() {
+		JSONObject newData = TreeService.getInstance().getRackableTree();
+		logger.info("----FlexRoomService---getMOTreeListTest"
+				+ newData.toString());
+	}
+
+	public JSONObject getPartMOTreeList(String mosn) {
+		int dmsn = Utilities.getDmsn();
+		ICoreBufService coreBuf = CoreBufService.getInstance(dmsn);
+		int int_mosn = Integer.parseInt(mosn);
+		MONode mo = (MONode) coreBuf.getMO(int_mosn);
+		List<ITreeNode> children = mo.getChildren();
+		JSONObject result = new JSONObject();
+		result.put("label", "管理对象子部件");
+		JSONArray res = new JSONArray();
+		try {
+			res = filterMOTreeList(children, coreBuf, result, "part1");
+		} catch (Exception e) {
+			logger.info("----FlexRoomService---getPartMOTreeList-error");
+		}
+		result.put("children", res);
+		return result;
+	}
+
+	public JSONArray filterMOTreeList(List<ITreeNode> treeNodeList,
+			ICoreBufService coreBuf, JSONObject result, String nodeType) {
+		IconManager defim = new IconManager();
+		JSONArray res = new JSONArray();
+		for (ITreeNode treeNode : treeNodeList) {
+			IMONode mo = null;
+			String partID = null;
+			IMOType type;
+			String partType = null;
+			String alias = null;
+			String name = null;
+			String icon = null;
+			if (treeNode.isMONode()) {
+				mo = (MONode) treeNode;
+				partID = mo.getTMO().getFshareid();
+				type = CoreBufService.getInstance().getMOType(mo.getType());
+				partType = type.getTType().getFexternalid();
+				alias = mo.getAlias();
+				icon = defim.getIconByMO(mo).getViewIconUrl(true);
+				name = mo.getDisplayName();
+			} else {
+				partID = treeNode.getNodeID();
+				partType = treeNode.getType();
+				alias = treeNode.getAlias();
+				icon = defim.getIconByMO(mo).getViewIconUrl(true);
+				name = treeNode.getDisplayName();
+			}
+
+			JSONObject info = new JSONObject();
+			info.element("type", partType);
+			info.element("mosn", partID);
+			info.element("alias", alias);
+			info.element("ficon", icon);
+			info.element("nodeType", nodeType);
+
+			// if (StringUtils.isBlank(alias) || alias.equalsIgnoreCase("-"))
+			// alias = "__N/A__";
+			// if (StringUtils.isBlank(name) || name.equalsIgnoreCase("-"))
+			// name = "__N/A__";
+			if (alias.equals("") && !name.equals("")) {
+				info.element("label", name);
+			} else if (alias.equals(name) || name.equals("")) {
+				info.element("label", alias);
+			} else {
+				info.element("label",
+						(new StringBuilder(String.valueOf(alias))).append("(")
+								.append(name).append(")").toString());
+			}
+			JSONArray childrenArray = filterMOTreeList(treeNode.getChildren(),
+					coreBuf, info, "part2");
+			if (childrenArray != null && childrenArray.size() != 0) {
+				info.element("children", childrenArray);
+			}
+			res.add(info);
+		}
+
+		return res;
+	}
+
+	/**
+	 * 获取环境树列表，用于展示环境树
+	 * 
+	 * @return
+	 */
+	public JSONObject getLeakTreeList() {
+		return TreeService.getInstance().getFilteredTreeByType("4207", null);
+	}
+
+	/**
+	 * 获取环境树列表，用于展示环境树
+	 * 
+	 * @return
+	 */
+	public JSONObject getEnvTreeList() {
+		return TreeService.getInstance().getEnvTemperatureTree();
+	}
+
+	/**
+	 * 获取设备树列表，用于展示设备树
+	 * 
+	 * @return
+	 */
+	public void getEnvTreeListTest() {
+		JSONObject newData = TreeService.getInstance().getEnvTemperatureTree();
+		logger.info("----FlexRoomService---getEnvTreeListTest"
+				+ newData.toString());
+	}
+
+	public JSONObject getUPSTreeList() {
+		return TreeService.getInstance().getEnvUPSTree();
+	}
+
+	public JSONObject getACTreeList() {
+		return TreeService.getInstance().getAcTree();
+	}
+
+	public JSONArray getEnvList(String viewId, HttpSession httpSession)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONArray kpiValues = new JSONArray();
+		JSONArray kpiIdList = new JSONArray();
+		kpiIdList.add("mosn");
+		kpiIdList.add("kpiId");
+		kpiIdList.add("kpiValue");
+		kpiIdList.add("pName");
+		kpiIdList.add("kpiIdMeta");
+		kpiIdList.add("time");
+		kpiValues.add(kpiIdList);
+		ViewManager viewManager = ViewManager.getInstance();
+
+		if (viewManager.hasView(viewId, dmsn + "")) {
+			View view = viewManager.getView(viewId, dmsn + "");
+			Collection<String> envList = view.getSensorIds();
+			Hashtable<String, Boolean> res = FlexRoomService.kpiHashtable
+					.get(viewId);
+			JSONArray args = new JSONArray();
+			JSONObject fTemperature = new JSONObject();
+			fTemperature.element("id", "fTemperature");
+			fTemperature.element("name", "temHumPerf");
+			args.add(fTemperature);
+
+			JSONObject fHumidity = new JSONObject();
+			fHumidity.element("id", "fHumidity");
+			fHumidity.element("name", "temHumPerf");
+			args.add(fHumidity);
+
+			if (res == null) {
+				Hashtable<String, Boolean> newRes = new Hashtable<String, Boolean>();
+				newRes.put("env", true);
+				KpiService.getInstance().registerEnvKpi(envList, args, dmsn);
+				FlexRoomService.kpiHashtable.put(viewId, newRes);
+				logger.info("--[FlexRoomService]---getEnvList注册了---mosn's length"
+						+ envList.size() + "---args length---" + args.size());
+			} else if (!res.containsKey("env")) {
+				res.put("env", true);
+				KpiService.getInstance().registerEnvKpi(envList, args, dmsn);
+				logger.info("--[FlexRoomService]---getEnvList注册了---mosn's length"
+						+ envList.size() + "---args1 length---" + args.size());
+			}
+
+			List<String> reqMosnList = new ArrayList<String>();
+			ArrayList<List<MOWrap>> wrapLists = new ArrayList<List<MOWrap>>();
+			for (int i = 0; i < 2; i++) {
+				List<MOWrap> wrapList = new ArrayList<MOWrap>();
+				if (i == 0) {
+					for (String mosn : envList) {
+						reqMosnList.add(mosn);
+						MOWrap wrap = new MOWrap(mosn, "temHumPerf",
+								"fTemperature");
+						wrapList.add(wrap);
+					}
+				} else {
+					for (String mosn : envList) {
+						MOWrap wrap1 = new MOWrap(mosn, "temHumPerf",
+								"fHumidity");
+						wrapList.add(wrap1);
+					}
+				}
+				wrapLists.add(wrapList);
+			}
+			for (int i = 0; i < wrapLists.size(); i++) {
+				List<MOWrap> wrapsList = wrapLists.get(i);
+				MOWrap wrap = null;
+				String resType = "";
+				String kpiId = "";
+				if (wrapsList != null && wrapsList.size() > 0) {
+					wrap = wrapsList.get(0);
+					resType = wrap.getPName();
+					kpiId = wrap.getKpiId();
+				} else {
+					continue;
+				}
+
+				logger.info("--[FlexRoomService]---getEnvList--reqMosnList-"
+						+ reqMosnList.size() + "---" + kpiId + "---" + resType);
+				Map<String, List<KpiValue>> kpiValuesList = new DataTest()
+						.updateData(reqMosnList, kpiId, resType);
+				logger.info("--[FlexRoomService]---getEnvList--updateData--kpiValuesList---"
+						+ kpiValuesList.size());
+				if (kpiValuesList != null) {
+					Iterator iter = kpiValuesList.entrySet().iterator();
+					while (iter.hasNext()) {
+						Map.Entry entry = (Map.Entry) iter.next();
+						String mosn = (String) entry.getKey();
+						List<KpiValue> values = (List<KpiValue>) entry
+								.getValue();
+						logger.info("--[FlexRoomService]---getEnvList--values"
+								+ values.size());
+						if (values != null) {
+							for (KpiValue kpi : values) {
+								List<String> valueList = new ArrayList<String>();
+								String value = kpi.getValue().get(0);
+								String timeValue = kpi.getCollTime().get(0);
+								String entryId = kpi.getId();
+								valueList.add(mosn);
+								valueList.add(entryId);
+								valueList.add(value);
+								valueList.add(resType);
+								valueList.add(kpiId);
+								valueList.add(timeValue);
+								kpiValues.add((ArrayList<String>) valueList);
+							}
+						}
+					}
+				}
+			}
+		}
+		return kpiValues;
+	}
+
+	private JSONArray getUpsRegisterInfo() {
+		JSONArray args = new JSONArray();
+		JSONObject upsBaseOutputStatus = new JSONObject();
+		upsBaseOutputStatus.element("id", "fUpsBaseOutputStatus");
+		upsBaseOutputStatus.element("name", "其他信息");
+		args.add(upsBaseOutputStatus);
+
+		JSONObject fUpsBaseOutputStatus4Panel = new JSONObject();
+		fUpsBaseOutputStatus4Panel.element("id", "fUpsBaseOutputStatus4Panel");
+		fUpsBaseOutputStatus4Panel.element("name", "其他信息");
+		args.add(fUpsBaseOutputStatus4Panel);
+
+		JSONObject fUpsSmartInputLineVoltageOfPhaseA = new JSONObject();
+		fUpsSmartInputLineVoltageOfPhaseA.element("id",
+				"fUpsSmartInputLineVoltageOfPhaseA");
+		fUpsSmartInputLineVoltageOfPhaseA.element("name", "输入性能");
+		args.add(fUpsSmartInputLineVoltageOfPhaseA);
+
+		JSONObject fUpsSmartInputLineVoltageOfPhaseB = new JSONObject();
+		fUpsSmartInputLineVoltageOfPhaseB.element("id",
+				"fUpsSmartInputLineVoltageOfPhaseB");
+		fUpsSmartInputLineVoltageOfPhaseB.element("name", "输入性能");
+		args.add(fUpsSmartInputLineVoltageOfPhaseB);
+
+		JSONObject fUpsSmartInputLineVoltageOfPhaseC = new JSONObject();
+		fUpsSmartInputLineVoltageOfPhaseC.element("id",
+				"fUpsSmartInputLineVoltageOfPhaseC");
+		fUpsSmartInputLineVoltageOfPhaseC.element("name", "输入性能");
+		args.add(fUpsSmartInputLineVoltageOfPhaseC);
+
+		JSONObject fUpsSmartOutputLoad = new JSONObject();
+		fUpsSmartOutputLoad.element("id", "fUpsSmartOutputLoad");
+		fUpsSmartOutputLoad.element("name", "输出性能");
+		args.add(fUpsSmartOutputLoad);
+
+		JSONObject fUpsSmartOutputVoltage = new JSONObject();
+		fUpsSmartOutputVoltage.element("id", "fUpsSmartOutputVoltage");
+		fUpsSmartOutputVoltage.element("name", "输出性能");
+		args.add(fUpsSmartOutputVoltage);
+
+		JSONObject fUpsSmartOutputCurrent = new JSONObject();
+		fUpsSmartOutputCurrent.element("id", "fUpsSmartOutputCurrent");
+		fUpsSmartOutputCurrent.element("name", "输出性能");
+		args.add(fUpsSmartOutputCurrent);
+
+		JSONObject fUpsSmartBatteryCapacity = new JSONObject();
+		fUpsSmartBatteryCapacity.element("id", "fUpsSmartBatteryCapacity");
+		fUpsSmartBatteryCapacity.element("name", "电池性能");
+		args.add(fUpsSmartBatteryCapacity);
+
+		JSONObject fUpsSmartBatteryTemperature = new JSONObject();
+		fUpsSmartBatteryTemperature
+				.element("id", "fUpsSmartBatteryTemperature");
+		fUpsSmartBatteryTemperature.element("name", "电池性能");
+		args.add(fUpsSmartBatteryTemperature);
+
+		JSONObject fUpsSmartStatusRectifier = new JSONObject();
+		fUpsSmartStatusRectifier.element("id", "fUpsSmartStatusRectifier");
+		fUpsSmartStatusRectifier.element("name", "状态信息");
+		args.add(fUpsSmartStatusRectifier);
+
+		JSONObject fUpsSmartStatusInverter = new JSONObject();
+		fUpsSmartStatusInverter.element("id", "fUpsSmartStatusInverter");
+		fUpsSmartStatusInverter.element("name", "状态信息");
+		args.add(fUpsSmartStatusInverter);
+		JSONObject inJson= new JSONObject();
+		inJson.element("id","in");
+		inJson.element("name", "输入");
+		args.add(inJson);
+		JSONObject outJson= new JSONObject();
+		inJson.element("id","out");
+		inJson.element("name", "输出");
+		args.add(outJson);
+		return args;
+	}
+
+	public JSONArray getACList(String viewId, HttpSession httpSession)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONArray kpiValues = new JSONArray();
+		JSONArray kpiIdList = new JSONArray();
+		kpiIdList.add("mosn");
+		kpiIdList.add("kpiId");
+		kpiIdList.add("kpiValue");
+		kpiValues.add(kpiIdList);
+		ViewManager viewManager = ViewManager.getInstance();
+
+		if (viewManager.hasView(viewId, dmsn + "")) {
+			View view = viewManager.getView(viewId, dmsn + "");
+			Collection<String> acIdList = view.getAcIds();
+			for (String mosn : acIdList) {
+				logger.info("---[viewlog][getACList]---mosn" + mosn + "start");
+				Map<String, String> kpiMap = new DataTest()
+						.queryAirConditionData(Integer.parseInt(mosn));
+				logger.info("---[viewlog][getACList]---mosn" + mosn
+						+ "----map.size"
+						+ (kpiMap != null ? kpiMap.size() : "null"));
+				if (kpiMap == null) {
+					continue;
+				}
+				Set<String> key = kpiMap.keySet();
+				for (Iterator it = key.iterator(); it.hasNext();) {
+					String k = (String) it.next();
+					String v = kpiMap.get(k);
+					JSONArray itemList = new JSONArray();
+					itemList.add(mosn);
+					itemList.add(k);
+					itemList.add(v);
+					kpiValues.add(itemList);
+				}
+			}
+		}
+		return kpiValues;
+	}
+
+	public JSONArray getUpsList(String viewId, HttpSession httpSession)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONArray kpiValues = new JSONArray();
+		JSONArray kpiIdList = new JSONArray();
+		kpiIdList.add("mosn");
+		kpiIdList.add("kpiId");
+		kpiIdList.add("kpiValue");
+		kpiIdList.add("pName");
+		kpiIdList.add("kpiIdMeta");
+		kpiIdList.add("time");
+		kpiValues.add(kpiIdList);
+		ViewManager viewManager = ViewManager.getInstance();
+
+		if (viewManager.hasView(viewId, dmsn + "")) {
+			View view = viewManager.getView(viewId, dmsn + "");
+			Collection<String> upsList = view.getUpsIds();
+			Hashtable<String, Boolean> res = FlexRoomService.kpiHashtable
+					.get(viewId);
+
+			if (res == null) {
+				JSONArray args = getUpsRegisterInfo();
+				Hashtable<String, Boolean> newRes = new Hashtable<String, Boolean>();
+				newRes.put("env", true);
+				KpiService.getInstance().registerEnvKpi(upsList, args, dmsn);
+				FlexRoomService.kpiHashtable.put(viewId, newRes);
+				logger.info("--[FlexRoomService]---getEnvList注册了---mosn's length"
+						+ upsList.size() + "---args length---" + args.size());
+			} else if (!res.containsKey("env")) {
+				res.put("env", true);
+				JSONArray args1 = getUpsRegisterInfo();
+				KpiService.getInstance().registerEnvKpi(upsList, args1, dmsn);
+				logger.info("--[FlexRoomService]---getEnvList注册了---mosn's length"
+						+ upsList.size() + "---args1 length---" + args1.size());
+			}
+
+			List<String> reqMosnList = new ArrayList<String>();
+			for (String mosn : upsList) {
+				reqMosnList.add(mosn);
+			}
+			ArrayList<List<MOWrap>> wrapLists = new ArrayList<List<MOWrap>>();
+
+			JSONArray args3 = getUpsRegisterInfo();
+			for (int i = 0, len = args3.size(); i < len; ++i) {
+				List<MOWrap> wrapList = new ArrayList<MOWrap>();
+				JSONObject resObj = args3.getJSONObject(i);
+				String pName = resObj.getString("name");
+				String kpiId = resObj.getString("id");
+				for (String mosn : upsList) {
+					MOWrap wrap = new MOWrap(mosn, pName, kpiId);
+					wrapList.add(wrap);
+				}
+				wrapLists.add(wrapList);
+			}
+
+			for (int i = 0; i < wrapLists.size(); i++) {
+				List<MOWrap> wrapsList = wrapLists.get(i);
+				MOWrap wrap = null;
+				String resType = "";
+				String kpiId = "";
+				if (wrapsList != null && wrapsList.size() > 0) {
+					wrap = wrapsList.get(0);
+					resType = wrap.getPName();
+					kpiId = wrap.getKpiId();
+				} else {
+					continue;
+				}
+
+				logger.info("--[FlexRoomService]---getUpsList--reqMosnList-"
+						+ reqMosnList.size() + "---" + kpiId + "---" + resType);
+				Map<String, List<KpiValue>> kpiValuesList = new DataTest()
+						.updateData(reqMosnList, kpiId, resType);
+				logger.info("--[FlexRoomService]---getUpsList--updateData--kpiValuesList---"
+						+ kpiValuesList.size());
+				if (kpiValuesList != null) {
+					Iterator iter = kpiValuesList.entrySet().iterator();
+					while (iter.hasNext()) {
+						Map.Entry entry = (Map.Entry) iter.next();
+						String mosn = (String) entry.getKey();
+						List<KpiValue> values = (List<KpiValue>) entry
+								.getValue();
+						logger.info("--[FlexRoomService]---getUpsList--values"
+								+ values.size());
+						if (values != null) {
+							for (KpiValue kpi : values) {
+								List<String> valueList = new ArrayList<String>();
+								String value = kpi.getValue().get(0);
+								String timeValue = kpi.getCollTime().get(0);
+								String entryId = kpi.getId();
+								valueList.add(mosn);
+								valueList.add(entryId);
+								valueList.add(value);
+								valueList.add(resType);
+								valueList.add(kpiId);
+								valueList.add(timeValue);
+								kpiValues.add((ArrayList<String>) valueList);
+							}
+						}
+					}
+				}
+			}
+		}
+		return kpiValues;
+	}
+
+	private JSONArray getLeakRegisterInfo() {
+		JSONArray args = new JSONArray();
+		JSONObject leakStatus = new JSONObject();
+		leakStatus.element("id", "leakWaterStat");
+		leakStatus.element("name", "leakWater");
+		args.add(leakStatus);
+
+		JSONObject leakLoc = new JSONObject();
+		leakLoc.element("id", "fLeakLocation");
+		leakLoc.element("name", "leakWater");
+		args.add(leakLoc);
+
+		JSONObject ac = new JSONObject();
+		ac.element("id", "fWorkStat");
+		ac.element("name", "airCondition");
+		args.add(ac);
+
+		return args;
+	}
+
+	public JSONArray getLeakInfo(String viewId, HttpSession httpSession)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONArray kpiValues = new JSONArray();
+		JSONArray kpiIdList = new JSONArray();
+		kpiIdList.add("mosn");
+		kpiIdList.add("kpiId");
+		kpiIdList.add("kpiValue");
+		kpiIdList.add("pName");
+		kpiIdList.add("kpiIdMeta");
+		kpiValues.add(kpiIdList);
+		ViewManager viewManager = ViewManager.getInstance();
+
+		if (viewManager.hasView(viewId, dmsn + "")) {
+			View view = viewManager.getView(viewId, dmsn + "");
+			Collection<String> leakList = view.getLeakIds();
+			leakList.addAll(view.getAcIds());
+			Hashtable<String, Boolean> res = FlexRoomService.kpiHashtable
+					.get(viewId);
+
+			if (res == null) {
+				JSONArray args = getLeakRegisterInfo();
+				Hashtable<String, Boolean> newRes = new Hashtable<String, Boolean>();
+				newRes.put("leak", true);
+				KpiService.getInstance().registerEnvKpi(leakList, args, dmsn);
+				FlexRoomService.kpiHashtable.put(viewId, newRes);
+				logger.info("--[FlexRoomService]---getLeakList注册了---mosn's length"
+						+ leakList.size() + "---args length---" + args.size());
+			} else if (!res.containsKey("leak")) {
+				res.put("leak", true);
+				JSONArray args1 = getUpsRegisterInfo();
+				KpiService.getInstance().registerEnvKpi(leakList, args1, dmsn);
+				logger.info("--[FlexRoomService]---getEnvList注册了---mosn's length"
+						+ leakList.size() + "---args1 length---" + args1.size());
+			}
+
+			List<String> reqMosnList = new ArrayList<String>();
+			for (String mosn : leakList) {
+				reqMosnList.add(mosn);
+			}
+			ArrayList<List<MOWrap>> wrapLists = new ArrayList<List<MOWrap>>();
+
+			JSONArray args3 = getLeakRegisterInfo();
+			for (int i = 0, len = args3.size(); i < len; ++i) {
+				List<MOWrap> wrapList = new ArrayList<MOWrap>();
+				JSONObject resObj = args3.getJSONObject(i);
+				String pName = resObj.getString("name");
+				String kpiId = resObj.getString("id");
+				for (String mosn : leakList) {
+					MOWrap wrap = new MOWrap(mosn, pName, kpiId);
+					wrapList.add(wrap);
+				}
+				wrapLists.add(wrapList);
+			}
+
+			for (int i = 0; i < wrapLists.size(); i++) {
+				List<MOWrap> wrapsList = wrapLists.get(i);
+				MOWrap wrap = null;
+				String resType = "";
+				String kpiId = "";
+				if (wrapsList != null && wrapsList.size() > 0) {
+					wrap = wrapsList.get(0);
+					resType = wrap.getPName();
+					kpiId = wrap.getKpiId();
+				} else {
+					continue;
+				}
+
+				logger.info("--[FlexRoomService]---getUpsList--reqMosnList-"
+						+ reqMosnList.size() + "---" + kpiId + "---" + resType);
+				Map<String, List<KpiValue>> kpiValuesList = new DataTest()
+						.updateData(reqMosnList, kpiId, resType);
+				logger.info("--[FlexRoomService]---getUpsList--updateData--kpiValuesList---"
+						+ kpiValuesList.size());
+				if (kpiValuesList != null) {
+					Iterator iter = kpiValuesList.entrySet().iterator();
+					while (iter.hasNext()) {
+						Map.Entry entry = (Map.Entry) iter.next();
+						String mosn = (String) entry.getKey();
+						List<KpiValue> values = (List<KpiValue>) entry
+								.getValue();
+						logger.info("--[FlexRoomService]---getUpsList--values"
+								+ values.size());
+						if (values != null) {
+							for (KpiValue kpi : values) {
+								List<String> valueList = new ArrayList<String>();
+								String value = kpi.getValue().get(0);
+								String timeValue = kpi.getCollTime().get(0);
+								String entryId = kpi.getId();
+								valueList.add(mosn);
+								valueList.add(entryId);
+								valueList.add(value);
+								valueList.add(resType);
+								valueList.add(kpiId);
+								kpiValues.add((ArrayList<String>) valueList);
+							}
+						}
+					}
+				}
+			}
+		}
+		return kpiValues;
+	}
+
+	public String getMOStatus(String mosn, String userId) {
+		String rtnStatus = "normal";
+		ICoreBufService coreBuf = CoreBufService.getInstance(Domain
+				.getCurDomain());
+		if (StringUtils.isNumeric(mosn)) {
+			MONode mo = (MONode) coreBuf.getMO(Integer.parseInt(mosn));
+			if (mo == null) {// 不存在
+				rtnStatus = "inexist";
+			} else {
+				if (!AuthService.getInstance().isAuth(userId,
+						mo.getMOSN().toString(), "r", "mo")) {
+					rtnStatus = "noauth";
+				} else {
+					int statusIndex = mo.getCollStatus();
+					if (statusIndex == MOConst.COLL_STATUS_NOT_MANAGED) {
+						rtnStatus = "nomanager";
+					} else {
+						if (statusIndex == MOConst.COLL_STATUS_UNREACHABLE) {
+							rtnStatus = "unreachable";
+						} else if (statusIndex == MOConst.COLL_STATUS_PART_NORMAL) {
+							rtnStatus = "partreachable";
+						} else {
+							rtnStatus = "normal";
+						}
+					}
+				}
+			}
+		}
+		return rtnStatus;
+	}
+
+	public JSONArray getACStatus(String viewId, HttpSession session)
+			throws Exception {
+		int dmsn1 = Utilities.getDmsn();
+		String userId = ((User) session.getAttribute(loginUserIDName))
+				.getUserID();
+		JSONArray targetArray = new JSONArray();
+		JSONArray tag = new JSONArray();
+		tag.add("mosn");
+		tag.add("collStatus");
+		targetArray.add(tag);
+		if (ViewManager.getInstance().hasView(viewId, dmsn1 + "")) {
+			View view = ViewManager.getInstance().getView(viewId, dmsn1 + "");
+			Collection<String> acIdList = view.getAcIds();
+			for (String mosn : acIdList) {
+				String status = getMOStatus(mosn, userId);
+				JSONArray item = new JSONArray();
+				item.add(mosn);
+				item.add(status);
+				targetArray.add(item);
+			}
+		}
+		return targetArray;
+	}
+
+	public JSONArray getEquipmentAlarms(List<String> mosnList,
+			HttpSession session) throws Exception {
+		int dmsn1 = Utilities.getDmsn();
+		String userId = ((User) session.getAttribute(loginUserIDName))
+				.getUserID();
+		JSONArray targetArray = new JSONArray();
+		JSONArray tag = new JSONArray();
+		tag.add("mosn");
+		tag.add("almType");
+		tag.add("almLevel");
+		tag.add("trend");
+		tag.add("collStatus");
+		tag.add("type");
+		targetArray.add(tag);
+		String viewId = mosnList.get(0);
+		String rackId = mosnList.get(1);
+		String infoString = viewId + "," + rackId;
+		if (ViewManager.getInstance().hasView(viewId, dmsn1 + "")) {
+			View view = ViewManager.getInstance().getView(viewId, dmsn1 + "");
+			Collection<String> equipmentIdList = view
+					.getEquipmentIdsByRackName(rackId);
+			for (String mosn : equipmentIdList) {
+				String status = getMOStatus(mosn, userId);
+				infoString += "," + mosn;
+				MONode moNode = null;
+				try {
+					int int_mosn = Integer.parseInt(mosn);
+					int dmsn = CoreModelUtil.getDMSNFromMOSN(int_mosn);
+					ICoreBufService coreBuf = CoreBufService.getInstance(dmsn);
+					moNode = (MONode) coreBuf.getMO(int_mosn);
+				} catch (Exception e) {
+					logger.error("根据mosn获取对象失败，mosn=" + mosn, e);
+					continue;
+				}
+				if (moNode != null) {
+					int selfLevel = moNode.getStatus();
+					JSONArray item = new JSONArray();
+					item.add(mosn);
+					item.add("self");
+					item.add(selfLevel);
+					item.add("升级");
+					item.add(status);
+					item.add("mo");
+					targetArray.add(item);
+				}
+			}
+		}
+		logger.info("----flexRoomService---getEquipmentAlarms---" + infoString);
+		return targetArray;
+	}
+
+	public JSONArray getAlarms(String viewId, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		String userId = ((User) session.getAttribute(loginUserIDName))
+				.getUserID();
+		JSONArray targetArray = new JSONArray();
+		JSONArray tag = new JSONArray();
+		tag.add("mosn");
+		tag.add("almType");
+		tag.add("almLevel");
+		tag.add("trend");
+		tag.add("collStatus");
+		tag.add("type");
+		targetArray.add(tag);
+		if (ViewManager.getInstance().hasView(viewId, dmsn + "")) {
+			View view = ViewManager.getInstance().getView(viewId, dmsn + "");
+			for (String rackId : view.getRackIds()) {
+				int level = 0;
+				Collection<String> equipmentIds = view
+						.getEquipmentIdsByRackName(rackId);
+				for (String equipmentID : equipmentIds) {
+					MONode moNode = null;
+					try {
+						moNode = view.getMO(equipmentID);
+					} catch (Exception e) {
+						continue;
+					}
+
+					if (moNode != null) {
+//						String status = getMOStatus(equipmentID, userId);
+//						if (!status.equalsIgnoreCase("noauth")
+//								&& !status.equalsIgnoreCase("nomanager")
+//								&& !status.equalsIgnoreCase("unreachable")) {
+							int selfLevel = moNode.getStatus();
+							if (selfLevel > level) {
+								level = selfLevel;
+							}
+//						}
+					}
+				}
+				JSONArray item = new JSONArray();
+				item.add(rackId);
+				item.add("self");
+				item.add(level);
+				item.add("升级");
+				item.add("");
+				item.add("mo");
+				targetArray.add(item);
+			}
+
+			for (String moId : view.getMoIds()) {
+				MONode moNode = null;
+				try {
+					moNode = view.getMO(moId);
+				} catch (Exception e) {
+					continue;
+				}
+
+				if (moNode != null) {
+					String status = getMOStatus(moId, userId);
+					int selfLevel = moNode.getStatus();
+
+					JSONArray item = new JSONArray();
+					item.add(moId);
+					item.add("self");
+					item.add(selfLevel);
+					item.add("升级");
+					item.add(status);
+					item.add("mo");
+					targetArray.add(item);
+				}
+			}
+		}
+		return targetArray;
+	}
+
+	public JSONArray getAlarmsTest(String viewId, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONArray targetArray = new JSONArray();
+		if (ViewManager.getInstance().hasView(viewId, dmsn + "")) {
+			View view = ViewManager.getInstance().getView(viewId, dmsn + "");
+			for (String rackId : view.getRackIds()) {
+				Collection<String> equipmentIds = view
+						.getEquipmentIdsByRackName(rackId);
+				for (String equipmentID : equipmentIds) {
+					MONode moNode = null;
+					try {
+						moNode = view.getMO(equipmentID);
+					} catch (Exception e) {
+						continue;
+					}
+
+					if (moNode != null) {
+						int selfLevel = moNode.getStatus();
+						JSONArray item = new JSONArray();
+						item.add(equipmentID);
+						item.add("self");
+						item.add(selfLevel);
+						item.add(moNode.getTrend());
+						item.add("mo");
+						targetArray.add(item);
+					}
+				}
+			}
+		}
+		return targetArray;
+	}
+
+	public boolean setPrint(String viewId, String value) {
+		int dmsn = Utilities.getDmsn();
+		JSONObject arg = JSONObject.fromObject(value);
+		Hashtable<String, JSONObject> infos = ViewManager.printMap.get(dmsn);
+		if (infos != null) {
+			infos.remove(viewId);
+			infos.put(viewId, arg);
+		} else {
+			Hashtable<String, JSONObject> newMap = new Hashtable<String, JSONObject>();
+			newMap.put(viewId, arg);
+			ViewManager.printMap.put(dmsn + "", newMap);
+		}
+		return true;
+	}
+
+	public JSONObject getPrint(String dmsn, String viewId) {
+		JSONObject res = null;
+		Hashtable<String, JSONObject> infos = ViewManager.printMap.get(dmsn);
+		logger.info("--[getprint]---infos" + infos + "---dmsn---" + dmsn
+				+ "--viewId--" + viewId + "--map--"
+				+ ViewManager.printMap.size() + "ddd"
+				+ ViewManager.printMap.values().size());
+		if (infos != null) {
+			if (infos.containsKey(viewId)) {
+				res = infos.get(viewId);
+			}
+		}
+		return res;
+	}
+
+	private void delViewRelateImage(String viewId, int dmsn) {
+		String miniView1 = Utilities.getRootPath() + "/flex/uploadImage/"
+				+ dmsn + "/view_uploadImage/room/miniview/" + viewId + ".png";
+		String miniView2 = ModelCommonParams.getWorkRoot(dmsn)
+				+ "/view_uploadImage/room/miniview/" + viewId + ".png";
+		FileUtil.delRelFile(new File(miniView1));
+		FileUtil.delRelFile(new File(miniView2));
+	}
+
+	public String createNavViewGroup(String name, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		String viewGroupID = ViewDAO.insertViewGroup(name, roomType); // 入库时获取当前域
+		if (viewGroupID != null) {
+			ViewManager.getInstance().addViewGroupMap(dmsn + "", roomType,
+					viewGroupID, name);
+		}
+		return viewGroupID;
+	}
+
+	public JSONObject renameNavViewGroup(String groupId, String groupName,
+			HttpSession session) throws Exception {
+		Boolean result = renameViewGroup(groupId, groupName);
+		int dmsn = Utilities.getDmsn();
+		String miniPath = "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/room/miniview/";
+		JSONObject viewlist = new JSONObject();
+		if (result) {
+			viewlist = ViewManager.getInstance().getViewTreeListByUser("r",
+					roomType, dmsn + "", miniPath, session);
+		}
+		return viewlist;
+	}
+
+	public JSONObject removeNavViewGroup(String groupId, HttpSession session)
+			throws Exception {
+		Boolean result = removeViewGroup(groupId, true, session);
+		int dmsn = Utilities.getDmsn();
+		String miniPath = "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/room/miniview/";
+		JSONObject viewlist = new JSONObject();
+		viewlist = ViewManager.getInstance().getViewTreeListByUser("r",
+				roomType, dmsn + "", miniPath, session);
+		return viewlist;
+	}
+
+	public JSONObject renameNavView(String viewId, String viewName,
+			HttpSession session) throws Exception {
+		Boolean result = renameView(viewId, viewName);
+		int dmsn = Utilities.getDmsn();
+		String miniPath = "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/room/miniview/";
+		JSONObject viewlist = new JSONObject();
+		viewlist = ViewManager.getInstance().getViewTreeListByUser("r",
+				roomType, dmsn + "", miniPath, session);
+		return viewlist;
+	}
+
+	public JSONObject deleteNavView(ArrayList<String> viewIds,
+			HttpSession session) throws Exception {
+		deleteView(viewIds, session);
+		int dmsn = Utilities.getDmsn();
+		String miniPath = "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/room/miniview/";
+		JSONObject viewlist = new JSONObject();
+		viewlist = ViewManager.getInstance().getViewTreeListByUser("r",
+				roomType, dmsn + "", miniPath, session);
+		return viewlist;
+	}
+
+	public JSONArray getSnapshot(String viewId) {
+		int dmsn = Utilities.getDmsn();
+		String filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/room/hdsnapshot/" + viewId;
+		JSONArray res = new JSONArray();
+		try {
+			View view = ViewManager.getInstance().getView(viewId, dmsn + "");
+			if (view != null) {
+				String name = view.getName();
+				File file = new File(filePath);
+				if (file == null) {
+					logger.info("获取高清快照失败，目录不存在" + viewId);
+					return res;
+				} else {
+					File[] fileList = file.listFiles();
+					for (int i = fileList.length - 1; i >= 0; i--) {
+						File childFile = fileList[i];
+						String fileName = childFile.getName();
+						if (!fileName.equalsIgnoreCase("Thumbs.db")
+								&& !fileName.equalsIgnoreCase("CVS")) {
+							JSONObject arg = new JSONObject();
+							String[] nameList = fileName.split(" ");
+							arg.element("group", nameList[0]);
+							arg.element("name", nameList[1].replace(".png", ""));
+							arg.element("img", "/flex/uploadImage/" + dmsn
+									+ "/view_uploadImage/room/hdsnapshot/"
+									+ viewId + "/" + fileName);
+							res.add(arg);
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			logger.error("获取高清快照异常" + viewId, e);
+			return res;
+		}
+		return res;
+
+	}
+
+	/**
+	 * 获取所有KPI指标(设备指标和链路指标)
+	 * 
+	 * @throws Exception
+	 */
+	public JSONObject getPersonalConfig(String viewId, HttpSession session)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONObject config = new JSONObject();
+		if (ViewManager.getInstance().hasView(viewId, dmsn + "")) {
+			String xml = ViewDAO.getXMLConfig(roomType + PersonalConfigPrefix,
+					viewId, dmsn + "");
+			config.element("config", xml);
+		}
+		return config;
+	}
+
+	public boolean uptXMLConfig(String viewId, JSONObject jsonObj,
+			HttpSession session) {
+		int dmsn = Utilities.getDmsn();
+		String cfg = jsonObj.toString();
+		return ViewDAO.uptXMLConfig(roomType + PersonalConfigPrefix, viewId,
+				cfg, dmsn + "");
+	}
+
+	public boolean uptEquipmentUandPower(String mosn, String u, String p,
+			String desc, String falias) {
+		MONode mo = null;
+		try {
+			int int_mosn = Integer.parseInt(mosn);
+			ICoreBufService coreBuf = CoreBufService.getInstance(Utilities
+					.getDmsn());
+			mo = (MONode) coreBuf.getMO(int_mosn);
+			logger.info("----uptEquipmentUandPower---mosn---start" + int_mosn);
+			if (mo != null) {
+				logger.info("----uptEquipmentUandPower---mosn---in");
+				mo.getTMO().setFusize(Integer.parseInt(u));
+				mo.getTMO().setFpower(p);
+				mo.getTMO().setFdesc(desc);
+				mo.getTMO().setFalias(falias);
+				new CoreModelManager().addMO(mo.getTMO(), true);
+				logger.info("----uptEquipmentUandPower---mosn---in"
+						+ mo.getTMO().getFusize() + "___"
+						+ mo.getTMO().getFpower());
+			}
+		} catch (Exception e) {
+			logger.info("----uptEquipmentUandPower---mosn---error"
+					+ e.toString());
+			return false;
+		}
+		try {
+			EntityManager em = new EntityManager(mo.getDMSN());
+			Cmo mo1 = em.getCmoByMosn(Integer.parseInt(mosn));
+			if (mo1 != null) {
+				if (mo1.getFAlias() != null && mo1.getFAlias().equals(falias)) {
+					// logger.debug("失败");
+				} else {
+					mo1.setFAlias(falias);
+					em.persistentCmo(mo1);
+					logger.debug("----[Roomlog][FlexRoomService-uptEquipmentUandPower]----修改成功");
+				}
+			}
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			// e.printStackTrace();
+			logger.debug("----[Roomlog][FlexRoomService-uptEquipmentUandPower]----修改失败");
+		}
+
+		return true;
+	}
+
+	public boolean uptAssetUandPower(String id, String u, String p,
+			String desc, String falias) {
+		int dmsn = Utilities.getDmsn();
+		JdbcAbstractTemplate jdtSql = new JdbcAbstractTemplate(dmsn + "");
+		String updateSql = "update tcassets set fUSize='" + u + "',"
+				+ "fPower='" + p + "'," + "fDesc='" + desc + "'," + "fAlias='"
+				+ falias + "' where id='" + id + "'";
+		try {
+			try {
+				jdtSql.execute(updateSql);
+			} catch (ConnException e) {
+				logger.error("update  tcassets failed");
+				return false;
+			}
+		} catch (DBException e) {
+			logger.error("update  tcassets failed");
+			return false;
+		}
+		return true;
+	}
+
+	/**
+	 * 
+	 * @param id
+	 * @return 
+	 *         {"FAlias":"A475","FIpAddress":"","FModel":"catalyst4506","FName":"A475"
+	 *         ,"FPosition":"","FPower":"0","FSupport":"思科","FSupportTel":"",
+	 *         "FUSize":"","FVendor":"Cisco","id":"843"}
+	 */
+	public JSONObject getAssetInfo(String id) {
+		int dmsn = Utilities.getDmsn();
+		JdbcAbstractTemplate jdtSql = new JdbcAbstractTemplate(dmsn + "");
+		String queryStr = "select * from tcassets where id='" + id + "'";
+		List<Object> list = null;
+		try {
+			list = jdtSql.getList(Asset.class, queryStr);
+		} catch (DBException e) {
+			logger.error("[getAssetInfo] DBException occurred", e);
+		} catch (ConnException e) {
+			logger.error("[getAssetInfo] DBException occurred", e);
+		}
+		JSONObject res = new JSONObject();
+		if (list.size() > 0) {
+			Asset asset = (Asset) list.get(0);
+			res = JSONObject.fromObject(asset);
+		}
+		return res;
+	}
+
+	public JSONArray getTableData(List<String> mosns, List<String> params)
+			throws Exception {
+		int dmsn = Utilities.getDmsn();
+		JSONArray targetArray = new JSONArray();
+		JSONArray tag = new JSONArray();
+		tag.add("data");
+		targetArray.add(tag);
+		String[] mosnsStr = mosns.toArray(new String[mosns.size()]);
+		String[] paramsStr = params.toArray(new String[params.size()]);
+		Object arg = null;
+		String viewGlobalCfg = "";
+		try {
+			viewGlobalCfg = SystemParam.getInstance().getParam(0,
+					"viewGlobalCfg");
+			if (viewGlobalCfg != null) {
+				try {
+					JSONObject param = JSONObject.fromObject(viewGlobalCfg);
+					if (param.has("kpiMode")) {
+						String kpiMode = param.getString("kpiMode");
+						if (kpiMode.equalsIgnoreCase("url")) {
+							// String url = Utilities.getRootPath()
+							// + "/itims/typSz/queryData.action?mos="
+							// + mosns;
+							Class<?> clazz = null;
+							try {
+								clazz = Class
+										.forName("itims.typSz.action.TpData");
+							} catch (Exception e) {
+								logger.error(
+										"[错误] 未找到类 itims.typSz.action.TpData",
+										e);
+							}
+							if (clazz == null) {
+								return targetArray;
+							}
+							Class<?>[] types = getParameterTypes(clazz,
+									"queryData");
+							Method m = clazz.getMethod("queryData", types);
+							Object obj = (Object) clazz.newInstance();
+							arg = m.invoke(obj, mosns);
+						} else {
+							arg = new ViewDataGetter().getDatas(dmsn, mosnsStr,
+									paramsStr);
+						}
+					} else {
+						arg = new ViewDataGetter().getDatas(dmsn, mosnsStr,
+								paramsStr);
+					}
+				} catch (Exception e) {
+					ViewLogger.getInstance().info(
+							"----<viewlog>getTableData获取表格数据失败1", e);
+					arg = new ViewDataGetter().getDatas(dmsn, mosnsStr,
+							paramsStr);
+				}
+			} else {
+				arg = new ViewDataGetter().getDatas(dmsn, mosnsStr, paramsStr);
+			}
+		} catch (Exception e) {
+			ViewLogger.getInstance().debug("----<viewlog>getTableData获取表格数据失败",
+					e);
+			arg = new ViewDataGetter().getDatas(dmsn, mosnsStr, paramsStr);
+		}
+
+		JSONArray dataArray = new JSONArray();
+		dataArray.add(arg);
+		targetArray.add(dataArray);
+
+		return targetArray;
+	}
+
+	private Class<?>[] getParameterTypes(Class<?> c, String methodName) {
+		Class<?>[] types = null;
+		Method[] methods = c.getDeclaredMethods();
+		if (methods == null) {
+			// TODO 失败处理
+			return types;
+		}
+
+		for (int i = 0, size = methods.length; i < size; ++i) {
+			TypeVariable<Method>[] params = methods[i].getTypeParameters();
+			if (methods[i].getName().equals(methodName)) {
+				types = methods[i].getParameterTypes();
+				break;
+			}
+		}
+		return types;
+	}
+
+	public JSONArray getImageList(String type, String rootPath, String imagePath) {
+		int dmsn = Utilities.getDmsn();
+		JSONArray resultJsonArray = new JSONArray();
+		String filePath = "";
+		String realPath = "";
+		if (type.equalsIgnoreCase("system")) {
+			filePath = Utilities.getRootPath() + imagePath;
+			realPath = rootPath + imagePath;
+		} else {
+			filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+					+ "/view_uploadImage" + imagePath;
+			realPath = rootPath + "/flex/uploadImage/" + dmsn
+					+ "/view_uploadImage" + imagePath;
+		}
+
+		try {
+			File[] fileList = new File(filePath).listFiles();
+			logger.info("childFileList:" + filePath + "  size:"
+					+ fileList.length);
+			for (int i = 0, le = fileList.length; i < le; i++) {
+				File file = fileList[i];
+				String fileName = file.getName();
+				if (!fileName.equalsIgnoreCase("Thumbs.db")
+						&& !fileName.equalsIgnoreCase("CVS")) {
+					JSONObject resultJson = new JSONObject();
+					resultJson.element("tooltip", fileName);
+					resultJson.element("icon", realPath + fileName);
+					resultJsonArray.add(resultJson);
+				}
+			}
+		} catch (Exception e) {
+			logger.warn("Exception when list " + type + " mo icon images.", e);
+		}
+
+		return resultJsonArray;
+	}
+
+	public boolean delUploadImage(String typePath, String delImagePath) {
+		int dmsn = Utilities.getDmsn();
+		delImagePath = delImagePath.substring(delImagePath.lastIndexOf("/"),
+				delImagePath.length());
+		delImagePath = typePath + delImagePath;
+		String path1 = ModelCommonParams.getWorkRoot(dmsn)
+				+ "/view_uploadImage/" + delImagePath;
+		String path2 = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/" + delImagePath;
+		try {
+			FileUtil.delRelFile(new File(path1));
+			FileUtil.delRelFile(new File(path2));
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+
+	}
+	public JSONArray getBasicImageList(String type, String elementName, String rootPath) {
+		int dmsn = Utilities.getDmsn();
+		JSONArray resultJsonArray = new JSONArray();
+		String filePath = "";
+		String realPath = "";
+		if (type.equalsIgnoreCase("inlay")) {
+			if (elementName.equals("door"))
+			{
+				logger.debug("修改成功");
+				filePath = Utilities.getRootPath() + "/room/flex/image/ele/door/";
+				realPath = rootPath;
+			}
+			else if(elementName.equals("window")){ 
+				filePath = Utilities.getRootPath() + "/room/flex/image/ele/window/";
+				realPath = rootPath;
+				}
+			else if(elementName.equals("wall")) {
+					filePath = Utilities.getRootPath() + "/room/flex/image/ele/wall/";
+					realPath = rootPath;
+				}
+			else if(elementName.equals("rack")) {
+					filePath = Utilities.getRootPath() + "/room/flex/image/ele/rack/";
+					realPath = rootPath;
+				}
+
+			File[] fileList = new File(filePath).listFiles();
+			for (int i = 0, le = fileList.length; i < le; i++) {
+				File file = fileList[i];
+				String fileName = file.getName();
+				if (!fileName.equalsIgnoreCase("Thumbs.db")
+						&& !fileName.equalsIgnoreCase("CVS")) {
+					JSONObject jsonArg = new JSONObject();
+					if (elementName.equals("door"))
+					{
+						jsonArg.element("icon", realPath + "/room/flex/image/ele/door/"
+								+ fileName);
+						jsonArg.element("tooltip", fileName);	
+					}
+					else if(elementName.equals("window")){
+						jsonArg.element("icon", realPath + "/room/flex/image/ele/window/"
+								+ fileName);
+						jsonArg.element("tooltip", fileName);
+					
+					}else if(elementName.equals("wall")){
+						jsonArg.element("icon", realPath + "/room/flex/image/ele/wall/"
+								+ fileName);
+						jsonArg.element("tooltip", fileName);;
+					}
+					else if(elementName.equals("rack")){
+						jsonArg.element("icon", realPath + "/room/flex/image/ele/rack/"
+								+ fileName);
+						jsonArg.element("tooltip", fileName);;
+					}
+					resultJsonArray.add(jsonArg);
+				}
+			}
+		} else {
+			if (elementName.equals("door"))
+			{
+				filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/door/";
+				realPath = rootPath + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/door/";
+			}else if (elementName.equals("window")) {
+				filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/window/";
+				realPath = rootPath + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/window/";
+			}else if(elementName.equals("wall")){
+				filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/wall/";
+				realPath = rootPath + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/wall/";
+				
+			}else if(elementName.equals("rack")){
+				filePath = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/rack/";
+				realPath = rootPath + "/flex/uploadImage/" + dmsn
+						+ "/view_uploadImage/room/orbasicnode/rack/";
+				
+			}
+			try {
+				File[] fileList = new File(filePath).listFiles();
+				logger.info("childFileList:" + filePath + "  size:"
+						+ fileList.length);
+				for (int i = 0, le = fileList.length; i < le; i++) {
+					File file = fileList[i];
+					String fileName = file.getName();
+					if (!fileName.equalsIgnoreCase("Thumbs.db")
+							&& !fileName.equalsIgnoreCase("CVS")) {
+						JSONObject resultJson = new JSONObject();
+						resultJson.element("tooltip", fileName);
+						resultJson.element("icon", realPath + fileName);
+						resultJsonArray.add(resultJson);
+					}
+				}
+			} catch (Exception e) {
+				logger.warn("Exception when list " + type + "basic decoration elements icon images.",
+						e);
+			}
+		}
+		return resultJsonArray;
+	}
+	
+	/**
+	 * 删除图片
+	 */
+	public boolean delRoomUploadImage(String delImagePath,String elementName) {
+		int dmsn = Utilities.getDmsn();
+		delImagePath = delImagePath.substring(delImagePath.lastIndexOf("/"),
+				delImagePath.length());
+		delImagePath = "room/orbasicnode/" + elementName+"/"+delImagePath;
+		String path1 = ModelCommonParams.getWorkRoot(dmsn)
+				+ "/view_uploadImage/" + delImagePath;
+		String path2 = Utilities.getRootPath() + "/flex/uploadImage/" + dmsn
+				+ "/view_uploadImage/" + delImagePath;
+		try {
+			FileUtil.delRelFile(new File(path1));
+			FileUtil.delRelFile(new File(path2));
+			return true;
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
+	 * @param args
+	 */
+	public static void main(String[] args) {
+		// MockTestMode.gotoTestMode(999, "127.0.0.1", 3306, "root", "dhcc",
+		// "");
+		MockTestMode.gotoTestMode(101, "10.10.152.18", 3307, "itims",
+				"itims1cstnet2DH", "");
+		List<String> mosns = null;
+		for (String mosn : mosns) {
+		}
+
+	}
+}
