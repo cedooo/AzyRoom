@@ -1,9 +1,0 @@
-itims.driverClassName=com.mysql.jdbc.Driver
-itims.url=jdbc\:mysql\://192.168.0.104\:3306/dmsn_998
-itims.username=root
-itims.password=root
-  
-azy.driverClassName=net.sourceforge.jtds.jdbc.Driver
-azy.url=jdbc:jtds:sqlserver://192.168.0.104/myserver
-azy.username=sa
-azy.password=sa
