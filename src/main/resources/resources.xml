@@ -3,16 +3,20 @@
 	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
 	xmlns:beans="http://www.springframework.org/schema/beans"
 	xmlns:context="http://www.springframework.org/schema/context"
+    xmlns:jdbc="http://www.springframework.org/schema/jdbc"
 	xmlns:jee="http://www.springframework.org/schema/jee"
 	xsi:schemaLocation="http://www.springframework.org/schema/beans
-    http://www.springframework.org/schema/beans/spring-beans.xsd
-    http://www.springframework.org/schema/context
-    http://www.springframework.org/schema/context/spring-context.xsd
+	    http://www.springframework.org/schema/beans/spring-beans.xsd
+	    http://www.springframework.org/schema/context
+	    http://www.springframework.org/schema/context/spring-context.xsd
         http://www.springframework.org/schema/jee
-        http://www.springframework.org/schema/jee/spring-jee.xsd">
+        http://www.springframework.org/schema/jee/spring-jee.xsd
+        http://www.springframework.org/schema/jdbc 
+        http://www.springframework.org/schema/jdbc/spring-jdbc.xsd">
 
 	<beans profile="default">
 		<!-- <context:property-placeholder location="classpath:/dev-jdbc.propertites" /> -->
+		<!--
 		<bean id="dataSourceDmsn998" class="org.apache.commons.dbcp.BasicDataSource"
 			destroy-method="close">
 			<property name="driverClassName" value="com.mysql.jdbc.Driver" />
@@ -20,6 +24,11 @@
 			<property name="username" value="root" />
 			<property name="password" value="root" />
 		</bean>
+		 -->
+		<jdbc:embedded-database id="dataSourceDmsn998">
+            <jdbc:script location="classpath:com/dhcc/itims/azy/adam/test/sql/dmsn_998_schema.sql"/>
+            <jdbc:script location="classpath:com/dhcc/itims/azy/adam/test/sql/dmsn_998_test_data.sqll"/>
+        </jdbc:embedded-database>
 		<bean  id="dataSourceAzy" class="org.apache.commons.dbcp.BasicDataSource"
 			destroy-method="close">
 			<property name="driverClassName" value="net.sourceforge.jtds.jdbc.Driver" />
