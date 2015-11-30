@@ -10,7 +10,7 @@
         http://www.springframework.org/schema/context/spring-context.xsd">
 
 	<context:component-scan base-package="com.dhcc.itims.azy.adam" />
-	<import resource="DBresources.xml" />
+	<import resource="resources.xml" />
 	<import resource="beans.xml" />
 
 </beans>
