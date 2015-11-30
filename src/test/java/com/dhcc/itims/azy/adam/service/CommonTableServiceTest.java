@@ -21,6 +21,7 @@ public class CommonTableServiceTest extends TestCase {
 
 	public void testListPower() {
 		List<AzyPower> listAzyPower = service.listPower();
+		System.out.println(listAzyPower);
 		assertEquals(listAzyPower!=null && listAzyPower.size()>0, true);
 	}
 
