@@ -24,8 +24,11 @@
 			</list>
 		</property>
 	</bean>
-	<task:scheduled-tasks scheduler="myScheduler">
-		<task:scheduled ref="scheduledTasks" method="updateAzy" fixed-delay="120000" />
-	</task:scheduled-tasks>
-	<task:scheduler id="myScheduler" pool-size="10" />
+	<beans profile="production">
+		<task:scheduled-tasks scheduler="taskScheduler">
+			<task:scheduled ref="scheduledTasks" method="updateAzy"
+				fixed-delay="120000" />
+		</task:scheduled-tasks>
+		<task:scheduler id="taskScheduler" pool-size="10" />
+	</beans>
 </beans>
