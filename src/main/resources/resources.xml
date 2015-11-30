@@ -16,7 +16,6 @@
 
 	<beans profile="default">
 		<!-- <context:property-placeholder location="classpath:/dev-jdbc.propertites" /> -->
-		<!-- 
 		<bean id="dataSourceDmsn998" class="org.apache.commons.dbcp.BasicDataSource"
 			destroy-method="close">
 			<property name="driverClassName" value="com.mysql.jdbc.Driver" />
@@ -32,15 +31,16 @@
 			<property name="username" value="sa" />
 			<property name="password" value="sa" />
 		</bean>
+		<!-- 
+		<jdbc:embedded-database id="dataSourceDmsn998" type="DERBY">
+            <jdbc:script location="classpath:dmsn_998_schema.sql"/>
+            <jdbc:script location="classpath:dmsn_998_test_data.sqll"/>
+        </jdbc:embedded-database>
+		<jdbc:embedded-database id="dataSourceAzy" >
+            <jdbc:script location="classpath:myserver-schema.sql"/>
+            <jdbc:script location="classpath:myserver-test-data.sql"/>
+        </jdbc:embedded-database>
 		 -->
-		<jdbc:embedded-database id="dataSourceDmsn998">
-            <jdbc:script location="classpath:com/dhcc/itims/azy/adam/test/itims/sql/dmsn_998_schema.sql"/>
-            <jdbc:script location="classpath:com/dhcc/itims/azy/adam/test/itims/sql/dmsn_998_test_data.sqll"/>
-        </jdbc:embedded-database>
-		<jdbc:embedded-database id="dataSourceAzy">
-            <jdbc:script location="classpath:com/dhcc/itims/azy/adam/test/azy/sql/myserver-schema.sql"/>
-            <jdbc:script location="classpath:com/dhcc/itims/azy/adam/test/azy/sql/myserver-test-data.sql"/>
-        </jdbc:embedded-database>
 	</beans>
 
 	<beans profile="production">

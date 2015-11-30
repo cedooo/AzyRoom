@@ -1,27 +1,7 @@
-/*
-Navicat MySQL Data Transfer
 
-Source Server         : vmmysql55
-Source Server Version : 50546
-Source Host           : 192.168.0.104:3306
-Source Database       : dmsn_998
-
-Target Server Type    : MYSQL
-Target Server Version : 50546
-File Encoding         : 65001
-
-Date: 2015-11-26 10:55:51
-*/
-
--- ----------------------------
--- Records of azy_dev_power
--- ----------------------------
 INSERT INTO `azy_dev_power` VALUES ('1', '1111', '4132.00', '4133.00', '4134.00', '4135.00', '4136.00', '4137.00', '4138.00', '4139');
 INSERT INTO `azy_dev_power` VALUES ('2', '2222', '4313.00', '4314.00', '4315.00', '4316.00', '4317.00', '4318.00', '4319.00', '4320');
 
--- ----------------------------
--- Records of azy_dev_temp_hum
--- ----------------------------
 INSERT INTO `azy_dev_temp_hum` VALUES ('1', '998037974', '1048', '1049');
 INSERT INTO `azy_dev_temp_hum` VALUES ('2', '998037979', '1050', '1051');
 INSERT INTO `azy_dev_temp_hum` VALUES ('3', '998037980', '1467', '1468');
@@ -49,17 +29,11 @@ INSERT INTO `azy_dev_temp_hum` VALUES ('24', '998038019', '3979', '3980');
 INSERT INTO `azy_dev_temp_hum` VALUES ('25', '998038020', '3981', '3982');
 INSERT INTO `azy_dev_temp_hum` VALUES ('26', '998038021', '3983', '3984');
 
--- ----------------------------
--- Records of azy_dev_ups
--- ----------------------------
 INSERT INTO `azy_dev_ups` VALUES ('1', 'UPS1监测', '1', '4151', null, null, '4154', null, null, '4140', null, null, '4173', '4168', '4169', '4157');
 INSERT INTO `azy_dev_ups` VALUES ('2', 'UPS2监测', '2', '4241', '4242', '4243', '4244', '4245', '4246', '4230', '4231', '4232', '4255', '4252', '4253', null);
 INSERT INTO `azy_dev_ups` VALUES ('3', '惠南机房UPS监测', '3', '4354', null, null, '4357', null, null, null, null, null, null, '4358', null, '4359');
 
 
--- ----------------------------
--- Records of jfdevins
--- ----------------------------
 INSERT INTO `jfdevins` VALUES ('UPS间温湿度监测', '1048', '56', '温度1', '℃', '22.10', '2015-11-23 23:42:51');
 INSERT INTO `jfdevins` VALUES ('UPS间温湿度监测', '1049', '56', '湿度1', '%', '39.60', '2015-11-23 23:42:51');
 INSERT INTO `jfdevins` VALUES ('UPS间温湿度监测', '1050', '56', '温度2', '℃', '21.60', '2015-11-23 23:42:51');
@@ -380,9 +354,6 @@ INSERT INTO `jfdevins` VALUES ('惠南机房UPS监测', '4363', '200', '旁路�
 INSERT INTO `jfdevins` VALUES ('惠南机房UPS监测', '4364', '200', '输出状态', '', '运行', '2015-11-23 23:42:52');
 INSERT INTO `jfdevins` VALUES ('惠南机房UPS监测', '4365', '200', '市电输入状态', '', '运行', '2015-11-23 23:42:52');
 
--- ----------------------------
--- Records of tptemhumperf
--- ----------------------------
 INSERT INTO `tptemhumperf` VALUES ('998001', '2015-11-05 13:34:33', null, null, '22.10', '39.60', '998', '998001');
 INSERT INTO `tptemhumperf` VALUES ('998002', '2015-11-05 13:34:33', null, null, '21.60', '41.10', '998', '998002');
 INSERT INTO `tptemhumperf` VALUES ('998001', '2015-11-05 13:34:33', null, null, '22.10', '39.60', '998', '998001');
