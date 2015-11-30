@@ -34,7 +34,7 @@ public class DataJsonController {
 		this.commonTableService = commonTableService;
 	}
 
-	@RequestMapping(path = "/common")
+	@RequestMapping("/common")
 	@ResponseBody
 	public HttpEntity<String> common(@RequestParam String mosns) {
 		HttpHeaders responseHeaders = new HttpHeaders();
