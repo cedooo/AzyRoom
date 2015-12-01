@@ -3,4 +3,5 @@ encoding//src/main/java=UTF-8
 encoding//src/main/resources/sql/dmsn_998_schema.sql=UTF-8
 encoding//src/main/resources/sql/dmsn_998_test_data.sql=UTF-8
 encoding//src/main/resources/sql/myserver-schema.sql=UTF-8
+encoding//src/main/resources/sql/myserver-test-data.sql=UTF-8
 encoding//src/test/java=UTF-8
