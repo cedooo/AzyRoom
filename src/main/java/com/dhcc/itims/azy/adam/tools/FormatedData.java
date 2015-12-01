@@ -37,7 +37,8 @@ public class FormatedData {
 				int colCount = 0;
 				for (int i = 0; i < attArr.length; i++) {
 					if(colCount<data.getTitleCol()){
-						datadata[rowCount][colCount++] = attArr[i][0]+ ":"  +attArr[i][1];
+						datadata[rowCount][colCount++] = attArr[i][0]+ ":"  +attArr[i][1] +
+								(attArr[i][2]!=null?attArr[i][2]:"");
 					}else{
 						rowCount++;
 						colCount = 0;

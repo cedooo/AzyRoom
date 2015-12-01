@@ -79,25 +79,32 @@ public class AzyPower {
 				+ "]";
 	}
 	public String[][] attributeArray(){
-		String[][] rta = new String[10][2];
+		String[][] rta = new String[10][3];
 		rta[0][0] = "MOSN";
 		rta[0][1] = mosn;
 		rta[1][0] = "采集时间";
 		rta[1][1] =collectTime;
 		rta[2][0] = "A相电压";
 		rta[2][1] = va;
+		rta[2][2] = "V";
 		rta[3][0] = "B相电压";
 		rta[3][1] = vb;
+		rta[3][2] = "V";
 		rta[4][0] = "C相电压";
 		rta[4][1] = vc;
+		rta[4][2] = "V";
 		rta[5][0] = "AB线电压";
 		rta[5][1] = vab;
+		rta[5][2] = "V";
 		rta[6][0] = "BC线电压";
 		rta[6][1] = vbc;
+		rta[6][2] = "V";
 		rta[7][0] = "CA线电压";
 		rta[7][1] = vca;
+		rta[7][2] = "V";
 		rta[8][0] = "频率";
 		rta[8][1] = hz;
+		rta[8][2] = "Hz";
 		rta[9][0] = "通讯状态";
 		rta[9][1] = st;
 		return rta;
