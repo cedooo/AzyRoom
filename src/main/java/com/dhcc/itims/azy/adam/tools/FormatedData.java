@@ -42,6 +42,8 @@ public class FormatedData {
 					}else{
 						rowCount++;
 						colCount = 0;
+						datadata[rowCount][colCount++] = attArr[i][0]+ ":"  +attArr[i][1] +
+								(attArr[i][2]!=null?attArr[i][2]:"");
 					}
 				}
 				data.setData(datadata);
