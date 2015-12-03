@@ -19,6 +19,9 @@ public class FormatedDataTest extends TestCase {
 	}
 	public void testFormatData() {
 		System.out.println(formatedData.formatData(service.listPower()));
+	}
+	public void testFormatWrappedData() {
+		System.out.println(formatedData.wrapedData(service.listPower()));
 
 	}
 

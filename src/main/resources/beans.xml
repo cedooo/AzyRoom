@@ -14,8 +14,8 @@
 
 	<bean class="com.dhcc.itims.azy.adam.tools.Data" id="azyData">
 		<property name="title" value="test标题" />
-		<property name="titleRow" value="4" />
-		<property name="titleCol" value="3" />
+		<property name="titleRow" value="0" />
+		<property name="titleCol" value="0" />
 		<property name="colors">
 			<list>
 				<value>#000000</value>
@@ -23,6 +23,9 @@
 				<value>#ff0000</value>
 			</list>
 		</property>
+	</bean>
+	<bean class="com.dhcc.itims.azy.adam.tools.WrappedData" id="azyWrappedDataPrototype">
+		<property name="icon" value="" />
 	</bean>
 	<beans profile="production">
 		<task:scheduled-tasks scheduler="taskScheduler">

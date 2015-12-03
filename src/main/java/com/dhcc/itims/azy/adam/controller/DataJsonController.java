@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.dhcc.itims.azy.adam.service.ICommonTableService;
 import com.dhcc.itims.azy.adam.tools.Data;
 import com.dhcc.itims.azy.adam.tools.FormatedData;
+import com.dhcc.itims.azy.adam.tools.WrappedData;
 import com.dhcc.itims.azy.adam.vo.AzyPower;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -45,7 +46,8 @@ public class DataJsonController {
 			String jsonArray = null;
 			List<AzyPower> list = commonTableService.listAzyPower(mosn);
 			if (list != null && list.size() > 0) {
-				List<Data> listData = formatedData.formatData(list);
+				//List<Data> listData = formatedData.formatData(list);
+				List<WrappedData> listData = formatedData.wrapedData(list);
 				ObjectMapper mapper = new ObjectMapper();
 				try {
 					jsonArray = mapper.writeValueAsString(listData);
