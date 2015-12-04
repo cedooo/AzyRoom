@@ -37,14 +37,24 @@ public class FormatedData {
 	}
 	public Data azyPowerToData(AzyPower azyPower){
 		Data data = new Data();
+		/**
+		 * 拷贝data原型
+		 */
 		data.setTitleCol(dataPrototype.getTitleCol());
 		data.setTitleRow(dataPrototype.getTitleRow());
 		data.setColors(dataPrototype.getColors());
 		if(dataPrototype.getTitle()==null||"".equals(dataPrototype.getTitle())){
 			data.setTitle(azyPower.getMosn());
+		}else{
+			data.setTitle(dataPrototype.getTitle());
 		}
+		
+		/**
+		 * 设置data数组
+		 */
 		String[][] attArr = azyPower.attributeArray();
-		String[][] datadata = new String[(int) Math.sqrt(attArr.length)+1][(attArr.length/(int) Math.sqrt(attArr.length))+1];
+		String[][] datadata = 
+				new String[4][3];
 		for (int i = 0; i < datadata.length; i++) {
 			for (int j = 0; j < datadata[i].length; j++) {
 				datadata[i][j] =  "";
@@ -53,14 +63,18 @@ public class FormatedData {
 		int rowCount = 0;
 		int colCount = 0;
 		for (int i = 0; i < attArr.length; i++) {
-			if(colCount<data.getTitleCol()){
-				datadata[rowCount][colCount++] = attArr[i][0]+ ":"  +attArr[i][1];
+			if(colCount<3){
+				datadata[rowCount][colCount++] = attArr[i][0]+ ":"  +attArr[i][1]
+						+ (attArr[i][2]!=null?attArr[i][2]:"");
 			}else{
 				rowCount++;
 				colCount = 0;
+				datadata[rowCount][colCount++] = attArr[i][0]+ ":"  +attArr[i][1]
+						+ (attArr[i][2]!=null?attArr[i][2]:"");
 			}
 		}
 		data.setData(datadata);
+		
 		return data;
 	}
 	public List<WrappedData> wrapedData(List<AzyPower> list){

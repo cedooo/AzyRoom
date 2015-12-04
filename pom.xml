@@ -4,7 +4,7 @@
 	<groupId>com.dhcc.itims.azy</groupId>
 	<artifactId>adam</artifactId>
 	<packaging>war</packaging>
-	<version>0.1.1-SNAPSHOT</version>
+	<version>0.1.2-SNAPSHOT</version>
 	<name>adam Maven Webapp</name>
 	<url>http://maven.apache.org</url>
 	<properties>

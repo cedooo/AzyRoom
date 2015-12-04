@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.dhcc.itims.azy.adam.service.ICommonTableService;
-import com.dhcc.itims.azy.adam.tools.Data;
 import com.dhcc.itims.azy.adam.tools.FormatedData;
 import com.dhcc.itims.azy.adam.tools.WrappedData;
 import com.dhcc.itims.azy.adam.vo.AzyPower;
