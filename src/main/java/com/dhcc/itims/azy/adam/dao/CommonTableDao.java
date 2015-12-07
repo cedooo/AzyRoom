@@ -29,7 +29,7 @@ public class CommonTableDao implements ICommonTableDao {
 		try{
 			connection = dataSource.getConnection();
 			Statement statement = connection.createStatement();
-			String sql = "SELECT mosn,collectTime,va,vb,vc,vab,vbc,vca,hz,st FROM v_azy_power";
+			String sql = "SELECT mosn,DATE_FORMAT(collectTime, '%Y-%m-%d %H:%i') as collectTime,va,vb,vc,vab,vbc,vca,hz,st FROM v_azy_power";
 			ResultSet resultSet = statement.executeQuery(sql);
 			while(resultSet.next()){
 				AzyPower azyPower = new AzyPower();
@@ -77,7 +77,7 @@ public class CommonTableDao implements ICommonTableDao {
 		try{
 			connection = dataSource.getConnection();
 			Statement statement = connection.createStatement();
-			String sql = "SELECT mosn,collectTime,va,vb,vc,vab,vbc,vca,hz,st FROM v_azy_power where mosn= '" + mosn + "' ";
+			String sql = "SELECT mosn,DATE_FORMAT(collectTime, '%Y-%m-%d %H:%i') as collectTime,va,vb,vc,vab,vbc,vca,hz,st FROM v_azy_power where mosn= '" + mosn + "' ";
 			ResultSet resultSet = statement.executeQuery(sql);
 			while(resultSet.next()){
 				azyPower = new AzyPower();

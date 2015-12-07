@@ -44,7 +44,7 @@ public class FormatedData {
 		data.setTitleRow(dataPrototype.getTitleRow());
 		data.setColors(dataPrototype.getColors());
 		if(dataPrototype.getTitle()==null||"".equals(dataPrototype.getTitle())){
-			data.setTitle(azyPower.getMosn());
+			data.setTitle("");
 		}else{
 			data.setTitle(dataPrototype.getTitle());
 		}
@@ -54,7 +54,7 @@ public class FormatedData {
 		 */
 		String[][] attArr = azyPower.attributeArray();
 		String[][] datadata = 
-				new String[4][3];
+				new String[3][3];
 		for (int i = 0; i < datadata.length; i++) {
 			for (int j = 0; j < datadata[i].length; j++) {
 				datadata[i][j] =  "";

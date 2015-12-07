@@ -13,7 +13,6 @@
                            http://www.springframework.org/schema/task/spring-task-4.2.xsd">
 
 	<bean class="com.dhcc.itims.azy.adam.tools.Data" id="azyData">
-		<property name="title" value="test标题" />
 		<property name="titleRow" value="0" />
 		<property name="titleCol" value="0" />
 		<property name="colors">
