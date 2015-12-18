@@ -66,11 +66,16 @@ public class DataTransferDao implements IDataTransferDao {
 			}
 			int[] countBatch = statement.executeBatch();
 			boolean reInfo = true;
-			for (int i = 0; i < countBatch.length; i++) {
+			if(countBatch.length == listDevIns.size()){
+				reInfo = true;
+			}else if(countBatch.length < listDevIns.size()){
+				reInfo = false;
+			}
+			/*for (int i = 0; i < countBatch.length; i++) {
 				if(countBatch[i]!=2){
 					reInfo = false;
 				}
-			}
+			}*/
 			log.debug("执行批量插入操作结果:" + Arrays.toString(countBatch));
 			statement.close();
 			return reInfo;
